@@ -1,0 +1,18 @@
+{
+  "name": "fengtong-public",
+  "owner_name": "fengtong2001-ui",
+  "plugins": [
+    {
+      "name": "antigravity-control",
+      "source": "./antigravity-control",
+      "version": "0.2.0",
+      "description": "Control Google Antigravity (swarm board, agents, UI, screenshots) and dispatch tasks to common agent CLIs (claude/hermes/codex/gemini/...) with model & thinking-effort selection.",
+      "displayName": "Antigravity Control + Agent Hub",
+      "displayName_i18n": { "zh-CN": "Antigravity 控制器 + Agent 调度中心" },
+      "description_i18n": {
+        "zh-CN": "查看并控制 Google Antigravity(swarm 看板/成员启停/模型设置/截图),接入市面常见 agent CLI 统一调度:搜索安装、按需指定模型与思考强度;含 MCP server,任意 MCP 软件可用"
+      },
+      "category": "developer-tools"
+    }
+  ]
+}

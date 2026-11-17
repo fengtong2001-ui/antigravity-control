@@ -1,0 +1,14 @@
+{
+  "name": "antigravity-control",
+  "version": "0.2.0",
+  "description": "Inspect and control Google Antigravity (swarm board, agents, UI, screenshots) AND dispatch tasks to common agent CLIs (claude, hermes profiles, codex, gemini, ...) with model/thinking-effort/mode selection. Works from ZCode or any MCP client.",
+  "author": { "name": "fengtong" },
+  "skills": "./skills",
+  "commands": "./commands",
+  "mcpServers": {
+    "antigravity": {
+      "command": "/usr/bin/python3",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/mcp/server.py"]
+    }
+  }
+}
