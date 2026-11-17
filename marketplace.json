@@ -5,7 +5,7 @@
     {
       "name": "antigravity-control",
       "source": "./antigravity-control",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "description": "Control Google Antigravity (swarm board, agents, UI, screenshots) and dispatch tasks to common agent CLIs (claude/hermes/codex/gemini/...) with model & thinking-effort selection.",
       "displayName": "Antigravity Control + Agent Hub",
       "displayName_i18n": { "zh-CN": "Antigravity 控制器 + Agent 调度中心" },

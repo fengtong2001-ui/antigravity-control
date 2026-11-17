@@ -41,9 +41,9 @@
 }
 ```
 
-提供 18 个工具:`ag_status / ag_agents / ag_messages / ag_send / ag_agent_set /
-ag_deliverables / ag_logs / ag_open / ag_focus / ag_type / ag_screenshot` 与
-`hub_scan / hub_search / hub_models / hub_run / hub_tasks / hub_output / hub_stop`。
+提供 19 个工具:`ag_status / ag_agents / ag_messages / ag_send / ag_agent_set /
+ag_deliverables / ag_logs / ag_progress / ag_open / ag_focus / ag_type / ag_screenshot`
+与 `hub_scan / hub_search / hub_models / hub_run / hub_tasks / hub_output / hub_stop`。
 
 ## 命令行直用(零依赖,Python 3.8+ 标准库)
 
@@ -52,6 +52,8 @@ ag_deliverables / ag_logs / ag_open / ag_focus / ag_type / ag_screenshot` 与
 python3 antigravity-control/bin/agctl.py status          # 它在忙什么
 python3 antigravity-control/bin/agctl.py messages 20     # swarm 看板最近 20 条
 python3 antigravity-control/bin/agctl.py send "请汇报进度" --to coordinator --yes
+python3 antigravity-control/bin/agctl.py progress        # 派活进度:已读/已回复 + steps 增长
+python3 antigravity-control/bin/agctl.py watch --interval 5   # 实时滚动进度
 python3 antigravity-control/bin/agctl.py agent frontend-dev start --yes
 python3 antigravity-control/bin/agctl.py agent frontend-dev model gemini-3-pro-high --yes
 python3 antigravity-control/bin/agctl.py screenshot --out /tmp/ag.png

@@ -441,6 +441,212 @@ def cmd_deliver(args):
         print("  %s  %8sKB  %s" % (d["mtime"], d["size_kb"], d["path"]))
 
 
+# ---------------------------------------------------------------- 进度(progress/watch)
+
+def transcript_latest(cid):
+    """某会话最新一步动作:取最新的 transcript_full chunk 尾行。"""
+    root = BRAIN_DIR / cid / ".system_generated" / "logs" / "chunks" / "transcript_full"
+    if not root.is_dir():
+        return None
+    files = [p for p in root.glob("*.jsonl") if p.is_file()]
+    if not files:
+        return None
+    newest = max(files, key=lambda p: p.stat().st_mtime)
+    try:
+        with open(newest, encoding="utf-8", errors="replace") as f:
+            last = None
+            for line in f:
+                line = line.strip()
+                if line:
+                    last = line
+            if not last:
+                return None
+            d = json.loads(last)
+        return {
+            "step_index": d.get("step_index"),
+            "type": d.get("type"),
+            "status": d.get("status"),
+            "created_at": d.get("created_at"),
+            "snippet": (d.get("content") or (json.dumps(d.get("tool_calls"),
+                        ensure_ascii=False) if d.get("tool_calls") else ""))[:160],
+        }
+    except Exception:
+        return None
+
+
+def dispatch_status(board, members):
+    """追踪看板上的派活消息:是否已被目标 agent 读取/回复。"""
+    mm = members.get("members", {})
+    out = []
+    for e in board:
+        sender = e.get("agent", "")
+        text = e.get("text", "")
+        for name, m in mm.items():
+            if name == sender:
+                continue
+            if ("@" + name) in text:
+                out.append({
+                    "to": name,
+                    "seq": e.get("seq"),
+                    "from": sender,
+                    "time": e.get("time"),
+                    "snippet": text.replace("@" + name, "", 1).strip()[:120],
+                    "read": (m.get("last_read_seq") or 0) >= (e.get("seq") or 0),
+                    "replied": any(b.get("agent") == name and (b.get("seq") or 0) > (e.get("seq") or 0)
+                                   for b in board),
+                    "agent_phase": m.get("phase"),
+                })
+    return out
+
+
+def progress_snapshot(swarm_prefix=None, with_steps=True):
+    """构建一次完整进度快照(供 progress / watch 共用)。"""
+    s, members, board_path = load_swarm(swarm_prefix)
+    board = read_board(board_path)
+    board_seq = board[-1]["seq"] if board else 0
+    agents = {}
+    for name, m in members.get("members", {}).items():
+        cid = m.get("conversation_id")
+        entry = {
+            "phase": m.get("phase"),
+            "desired_state": m.get("desired_state"),
+            "model": m.get("desired_model"),
+            "last_read_seq": m.get("last_read_seq"),
+            "killed": m.get("killed"),
+        }
+        dbp = CONV_DIR / (str(cid) + ".db")
+        if dbp.is_file():
+            entry["db_mtime"] = datetime.fromtimestamp(dbp.stat().st_mtime).strftime("%H:%M:%S")
+        if with_steps and cid:
+            st = conv_db_stats(cid)
+            if st and "steps_total" in st:
+                entry["steps_total"] = st["steps_total"]
+                entry["steps_by_status"] = st["steps_by_status"]
+                entry["last_step_idx"] = st["last_step_idx"]
+            tl = transcript_latest(cid)
+            if tl:
+                entry["latest_action"] = tl
+        agents[name] = entry
+    return {
+        "swarm_id": s["id"],
+        "title": members.get("title"),
+        "board_seq": board_seq,
+        "dispatches": dispatch_status(board, members),
+        "agents": agents,
+        "captured_at": now_str(),
+    }
+
+
+def cmd_progress(args):
+    snap = progress_snapshot(args.swarm)
+    if args.json:
+        jout({"ok": True, **snap})
+        return
+    print("Swarm: %s (%s) — 看板 seq %s @ %s" % (
+        snap["title"] or "", snap["swarm_id"][:8], snap["board_seq"], snap["captured_at"]))
+    if snap["dispatches"]:
+        print("\n派活追踪:")
+        for d in snap["dispatches"]:
+            flag = "已回复" if d["replied"] else ("已读" if d["read"] else "未读")
+            print("  seq %-3s → %-12s [%s] phase=%-8s  %s…" % (
+                d["seq"], d["to"], flag, d["agent_phase"], d["snippet"][:60]))
+    print("\n各 agent 进度:")
+    for name, a in sorted(snap["agents"].items()):
+        line = "  %-12s %-8s read_seq=%-3s" % (name, a.get("phase"), a.get("last_read_seq"))
+        if "steps_total" in a:
+            line += " steps=%s(last=%s)" % (a["steps_total"], a.get("last_step_idx"))
+        if a.get("db_mtime"):
+            line += " 活动=%s" % a["db_mtime"]
+        print(line)
+        la = a.get("latest_action")
+        if la and la.get("snippet"):
+            print("      最新动作: [%s/%s] %s" % (la.get("type"), la.get("status"),
+                                                 la.get("snippet", "").replace("\n", " ")[:120]))
+
+
+def cmd_watch(args):
+    interval = max(2, args.interval or 5)
+    ticks = args.ticks if args.ticks and args.ticks > 0 else 0  # 0 = 无限
+    prev = None
+    prev_mtimes = {}
+    print("watching swarm progress every %ss (Ctrl-C 退出)%s" % (
+        interval, "" if not ticks else ", %d ticks" % ticks))
+    n = 0
+    try:
+        while True:
+            try:
+                # 优化:会话库 mtime 未变则跳过该 agent 的 steps 重算
+                s, members, board_path = load_swarm(args.swarm)
+                changed_db = {}
+                for name, m in members.get("members", {}).items():
+                    dbp = CONV_DIR / (str(m.get("conversation_id")) + ".db")
+                    mt = dbp.stat().st_mtime if dbp.is_file() else 0
+                    changed_db[name] = mt != prev_mtimes.get(name)
+                    prev_mtimes[name] = mt
+                # 借 progress_snapshot 但只对变化的 agent 算 steps
+                board = read_board(board_path)
+                board_seq = board[-1]["seq"] if board else 0
+                snap = {"board_seq": board_seq, "agents": {}, "dispatches": dispatch_status(board, members)}
+                for name, m in members.get("members", {}).items():
+                    cid = m.get("conversation_id")
+                    a = {"phase": m.get("phase"), "desired_state": m.get("desired_state"),
+                         "last_read_seq": m.get("last_read_seq")}
+                    if changed_db.get(name) or prev is None:
+                        st = conv_db_stats(cid) if cid else None
+                        if st and "steps_total" in st:
+                            a["steps_total"] = st["steps_total"]
+                            a["last_step_idx"] = st["last_step_idx"]
+                        tl = transcript_latest(cid) if cid else None
+                        if tl:
+                            a["latest_action"] = tl
+                    elif name in (prev or {}).get("agents", {}):
+                        p = prev["agents"][name]
+                        for kk in ("steps_total", "last_step_idx", "latest_action"):
+                            if kk in p:
+                                a[kk] = p[kk]
+                    snap["agents"][name] = a
+                prev = snap
+            except SystemExit:
+                raise
+            except Exception as e:
+                print("%s watch error: %s" % (now_str(), e))
+                snap = prev
+            n += 1
+            if prev:
+                if args.json:
+                    jout_line({"tick": n, **prev})
+                else:
+                    print_watch_tick(n, prev)
+            if ticks and n >= ticks:
+                break
+            time.sleep(interval)
+    except KeyboardInterrupt:
+        print("\nwatch stopped")
+
+
+def jout_line(obj):
+    print(json.dumps(obj, ensure_ascii=False), flush=True)
+
+
+def print_watch_tick(n, snap):
+    stamp = now_str().split(" ")[1]
+    parts = []
+    if snap.get("dispatches"):
+        for d in snap["dispatches"]:
+            flag = "已回复" if d["replied"] else ("已读" if d["read"] else "未读")
+            parts.append("派活seq%s→%s[%s]" % (d["seq"], d["to"], flag))
+    for name, a in sorted(snap["agents"].items()):
+        seg = "%s:%s" % (name, a.get("phase"))
+        if "steps_total" in a:
+            seg += " steps=%s" % a["steps_total"]
+        la = a.get("latest_action")
+        if la and la.get("snippet"):
+            seg += ' 「%s」' % (la.get("snippet", "").replace("\n", " ")[:60])
+        parts.append(seg)
+    print("[%s] tick %d board_seq=%s  %s" % (stamp, n, snap.get("board_seq"), "  |  ".join(parts)),
+          flush=True)
+
+
 def cmd_logs(args):
     s, _, _ = load_swarm(args.swarm)
     logs = tail_task_logs(args.n or 40, s["dir"])
@@ -614,6 +820,10 @@ Commands:
                             set a member's desired_model (e.g. gemini-3.8-flash-high)
   deliver [CONV_ID]         list deliverable files produced in a conversation
   logs [N]                  tail the newest swarm task/system logs
+  progress                  派活进度快照:看板 @消息 的已读/已回复状态 +
+                            各 agent steps 增长 + 最新动作
+  watch [--interval S] [--ticks N]
+                            实时滚动上述进度(默认 5s,--ticks 0 为无限)
   open [PATH]               open a file/folder in Antigravity (default: newest scratch project)
   focus                     bring Antigravity to front
   type "<text>" [--key cmd+l] [--enter]
@@ -652,6 +862,21 @@ def main():
                 except ValueError:
                     a.pos.append(tok)
         args = a
+    elif cmd in ("progress", "watch"):
+        a = Args()
+        a.json = False; a.swarm = None; a.yes = False; a.n = 40; a.conv = None
+        a.pos = []; a.text = []; a.agent = None; a.to = None
+        a.key = None; a.enter = False; a.out = None
+        a.interval = 5; a.ticks = 1
+        it = iter(rest)
+        for tok in it:
+            if tok == "--json": a.json = True
+            elif tok == "--swarm": a.swarm = next(it, None)
+            elif tok == "--interval": a.interval = int(next(it, "5"))
+            elif tok == "--ticks": a.ticks = int(next(it, "1"))
+            elif tok.startswith("--") and tok != "-":
+                die("unknown option: %s" % tok)
+        args = a
     elif cmd in ("convs", "logs", "screenshot", "open", "focus", "agent"):
         a = Args()
         a.json = False; a.swarm = None; a.yes = False; a.n = 40; a.conv = None
@@ -678,6 +903,7 @@ def main():
         "messages": cmd_messages, "send": cmd_send, "agent": cmd_agent,
         "deliver": cmd_deliver, "logs": cmd_logs, "open": cmd_open,
         "focus": cmd_focus, "type": cmd_type, "screenshot": cmd_screenshot,
+        "progress": cmd_progress, "watch": cmd_watch,
     }
     fn = table.get(cmd)
     if not fn:

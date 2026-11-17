@@ -18,7 +18,7 @@ from pathlib import Path
 AGCTL = Path(__file__).resolve().parent.parent / "bin" / "agctl.py"
 HUB = Path(__file__).resolve().parent.parent / "bin" / "hub.py"
 
-SERVER_INFO = {"name": "antigravity-control", "version": "0.2.0"}
+SERVER_INFO = {"name": "antigravity-control", "version": "0.2.1"}
 PROTOCOL_VERSION = "2024-11-05"
 
 BOOL_SCHEMA = {"type": "boolean", "default": False}
@@ -110,6 +110,13 @@ TOOLS = [
         "description": "截图 Antigravity 窗口(需屏幕录制权限),返回保存路径。",
         "inputSchema": {"type": "object", "properties": {
             "out": {"type": "string", "description": "输出 png 路径"}}},
+    },
+    {
+        "name": "ag_progress",
+        "description": "实时进度快照:看板上派给各 agent 的消息的已读/已回复状态,"
+                       "每个 agent 的 steps 增长、phase、最新动作(来自转录)。"
+                       "需要滚动追踪时可轮询调用。",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
     },
     {
         "name": "hub_scan",
@@ -252,6 +259,8 @@ def tool_call(name, args):
         if args.get("out"):
             argv += ["--out", args["out"]]
         return call_agctl(argv)
+    if name == "ag_progress":
+        return call_agctl(["progress", "--json"])
     if name == "hub_scan":
         return call_hub(["scan", "--json"])
     if name == "hub_search":

@@ -14,6 +14,7 @@
 | 给 agent 发任务(看板 @mention 唤醒) | `agctl send "..." --to coordinator --yes` |
 | 启动/停止某个 agent | `agctl agent <name> start\|stop --yes` |
 | **设置某成员的模型** | `agctl agent <name> model gemini-3.8-flash-high --yes` |
+| **实时进度**(派活已读/已回复、steps 增长、最新动作) | `agctl progress`;`agctl watch --interval 5` 滚动;MCP `ag_progress` |
 | 交付物 / 会话轨迹统计 | `agctl deliver` / `agctl convs` |
 | 打开文件 / 聚焦 / UI 输入 / 截图 | `agctl open\|focus\|type\|screenshot` |
 

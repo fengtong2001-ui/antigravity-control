@@ -1,6 +1,6 @@
 {
   "name": "antigravity-control",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Inspect and control Google Antigravity (swarm board, agents, UI, screenshots) AND dispatch tasks to common agent CLIs (claude, hermes profiles, codex, gemini, ...) with model/thinking-effort/mode selection. Works from ZCode or any MCP client.",
   "author": { "name": "fengtong" },
   "skills": "./skills",

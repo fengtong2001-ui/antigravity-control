@@ -20,6 +20,10 @@ description: 查看/控制本机 Google Antigravity —— 它的 swarm 在忙�
 - `python3 "$AGCTL" convs` — 全部会话 + steps 统计
 - `python3 "$AGCTL" deliver [CONV_ID]` — 交付文件(默认当前 swarm)
 - `python3 "$AGCTL" logs 40` — 最新任务/系统日志尾部
+- `python3 "$AGCTL" progress` — **派活进度快照**:看板上发给各 agent 的消息是否已读/已回复、
+  各 agent steps 增长、最新动作(转录);派活后用它汇报进度,或用 MCP 工具 ag_progress 轮询
+- `python3 "$AGCTL" watch --interval 5 --ticks 12` — 实时滚动进度(每个 tick 一行;
+  --json 时每 tick 输出一行 JSON,适合程序消费;--ticks 0 为无限)
 
 ## 写操作(写前先告知用户要做什么)
 
